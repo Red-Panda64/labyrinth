@@ -239,6 +239,11 @@ Renderer::Renderer(Map &&map, UVec2 framebuffer_size) : _map{std::move(map)}, _f
 {
 }
 
+ssize_t compute_starting_row(size_t screen_height, size_t wall_height) {
+    size_t wall_center = screen_height / 2;
+    return wall_center - static_cast<ssize_t>(wall_height) / 2;
+}
+
 void Renderer::draw_from(Vec2 pos, Vec2 look_dir)
 {
     _fb.clear();
@@ -254,13 +259,15 @@ void Renderer::draw_from(Vec2 pos, Vec2 look_dir)
         float height_ratio = _camera.column_height(depth);
 
         size_t screen_height = fb_size.second;
-        size_t column_height = screen_height * height_ratio;
-        column_height = std::min(screen_height, column_height);
-        size_t wall_center = screen_height / 2;
+        size_t wall_height = screen_height * height_ratio;
+        size_t column_height = std::min(screen_height, wall_height);
         
-        Vec2 uv = {hit.u, 0.0};
-        float v_step = 1.0 / (column_height - 1);
-        for (size_t j = wall_center - column_height / 2, k = 0; k < column_height; k++, j++)
+        float v_step = 1.0 / (wall_height - 1);
+        ssize_t starting_row = std::max(static_cast<ssize_t>(0), compute_starting_row(screen_height, column_height));
+        ssize_t unlimited_starting_row = compute_starting_row(screen_height, wall_height); 
+        Vec2 uv = {hit.u, v_step * (starting_row - unlimited_starting_row)};
+
+        for (size_t j = static_cast<size_t>(starting_row), k = 0; k < column_height; k++, j++)
         {
             _fb.set({i, j}, WALL_TEXTURE.sample(uv) * brightness_by_distance(depth));
             uv.second += v_step;
