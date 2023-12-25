@@ -132,53 +132,66 @@ PAIR_OP_ASSIGNMENT(*)
 PAIR_OP_ASSIGNMENT(/)
 
 #undef PAIR_OP_ASSIGNMENT
-#if 0
-template <typename T, typename U>
-static std::pair<T, T> operator-(const std::pair<T, T> &a, const std::pair<U, U> &b)
-{
-    static_assert(std::is_arithmetic_v<T> && std::is_arithmetic_v<U> && std::is_convertible_v<U, T>);
-    return {a.first - b.first, a.second - b.second};
-}
-#endif
 
-Framebuffer::Framebuffer(UVec2 dims) : _dims{dims}, _buffer{std::make_unique<float[]>(dims.first * dims.second)}
-{
-}
+constexpr size_t WALL_TEXTURE_WIDTH = 6, WALL_TEXTURE_HEIGHT = 6;
+Texture WALL_TEXTURE{{WALL_TEXTURE_WIDTH, WALL_TEXTURE_HEIGHT}};
 
-float *Framebuffer::data()
-{
-    return _buffer.get();
+void init_wall_texture() {
+    for(size_t i = 0; i < WALL_TEXTURE_WIDTH; i++) {
+        for(size_t j = 0; j < WALL_TEXTURE_HEIGHT; j++) {
+            WALL_TEXTURE.set({i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
+        }
+    }
 }
 
-const float *Framebuffer::data() const
+Texture::Texture(UVec2 dims) : _dims{dims}, _buffer{std::make_unique<float[]>(dims.first * dims.second)}
+{
+}
+
+float *Texture::data()
 {
     return _buffer.get();
 }
 
-UVec2 Framebuffer::size() const
+float Texture::sample(const Vec2 &uv) const
+{
+    unsigned x = _dims.first * uv.first;
+    x = std::min(x, _dims.first - 1);
+    unsigned y = _dims.second * uv.second;
+    y = std::min(y, _dims.second - 1);
+    return lookup({x, y});
+}
+
+const float *Texture::data() const
+{
+    return _buffer.get();
+}
+
+UVec2 Texture::size() const
 {
     return _dims;
 }
 
-float Framebuffer::lookup(const UVec2 &index) const
+float Texture::lookup(const UVec2 &index) const
 {
     if (index.first > _dims.first || index.second > _dims.second)
     {
         return 0.0;
     }
-    return _buffer[index.second * _dims.first + index.first];
+    /* Typically, the texture is traversed vertically*/
+    return _buffer[index.first * _dims.second + index.second];
 }
 
-void Framebuffer::set(const UVec2 &index, float brightness)
+void Texture::set(const UVec2 &index, float brightness)
 {
     if (index.first > _dims.first || index.second > _dims.second)
     {
         return;
     }
-    _buffer[index.second * _dims.first + index.first] = brightness;
+    _buffer[index.first * _dims.second + index.second] = brightness;
 }
 
-void Framebuffer::clear()
+void Texture::clear()
 {
     std::memset(_buffer.get(), 0, _dims.first * _dims.second * sizeof(float));
 }
@@ -244,10 +257,13 @@ void Renderer::draw_from(Vec2 pos, Vec2 look_dir)
         size_t column_height = screen_height * height_ratio;
         column_height = std::min(screen_height, column_height);
         size_t wall_center = screen_height / 2;
+        
+        Vec2 uv = {hit.u, 0.0};
+        float v_step = 1.0 / (column_height - 1);
         for (size_t j = wall_center - column_height / 2, k = 0; k < column_height; k++, j++)
         {
-            _fb.set({i, j}, brightness_by_distance(depth));
-            //_fb.set({i, j}, 1.0);
+            _fb.set({i, j}, WALL_TEXTURE.sample(uv) * brightness_by_distance(depth));
+            uv.second += v_step;
         }
         angle += dangle;
     }
@@ -270,6 +286,7 @@ HitResult Renderer::ray(Vec2 pos, Vec2 dir) const
     int yDelta = dir.second >= 0.0f ? 1 : -1;
     float xRemaining = (float)(cell_x + (dir.first >= 0.0f ? 1 : 0)) - pos.first;
     float yRemaining = (float)(cell_y + (dir.second >= 0.0f ? 1 : 0)) - pos.second;
+    bool x_hit;
     while (!_map.check({cell_x, cell_y}))
     {
         float xStep = xRemaining / dir.first;
@@ -283,6 +300,7 @@ HitResult Renderer::ray(Vec2 pos, Vec2 dir) const
             x += xDiff;
             xRemaining -= xDiff;
             cell_y += yDelta;
+            x_hit = false;
         }
         else
         {
@@ -293,10 +311,16 @@ HitResult Renderer::ray(Vec2 pos, Vec2 dir) const
             y += yDiff;
             yRemaining -= yDiff;
             cell_x += xDelta;
+            x_hit = true;
         }
     }
-
-    return HitResult{true, {x, y}};
+    float u;
+    if(x_hit) {
+        u = yDelta >= 0 ? yRemaining : 1.0 + yRemaining;
+    } else {
+        u = xDelta >= 0 ? xRemaining : 1.0 + xRemaining;
+    }
+    return HitResult{true, {x, y}, u};
 }
 
 void Renderer::render_fb()
@@ -490,6 +514,8 @@ int main()
     setup_tty();
     atexit(restore_tty);
     signal(SIGINT, signal_cleanup);
+
+    init_wall_texture();
 
     Map map = Map::from_string(map_example);
     Renderer r{std::move(map), {ascii_width, ascii_height * 2}};

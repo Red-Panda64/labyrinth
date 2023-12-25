@@ -4,17 +4,18 @@
 using Vec2 = std::pair<float, float>; 
 using UVec2 = std::pair<unsigned, unsigned>; 
 
-class Framebuffer final {
+class Texture final {
     std::unique_ptr<float[]> _buffer;
     UVec2 _dims;
 public:
-    Framebuffer(UVec2 dims);
+    Texture(UVec2 dims);
 
     float *data();
     const float *data() const;
 
     UVec2 size() const;
     float lookup(const UVec2 &index) const;
+    float sample(const Vec2 &pos) const;
     void set(const UVec2 &index, float brightness);
     void clear();
 };
@@ -59,11 +60,12 @@ public:
 struct HitResult {
     bool hit;
     Vec2 pos;
+    float u;
 };
 
 class Renderer final {
 private:
-    Framebuffer _fb;
+    Texture _fb;
     Map _map;
     Camera _camera;
 
