@@ -9,21 +9,18 @@ typedef struct {
     unsigned first, second;
 } uvec2_t;
 
-class Texture final {
-    std::unique_ptr<float[]> _buffer;
+typedef struct {
+    float *_buffer;
     uvec2_t _dims;
-public:
-    Texture(uvec2_t dims);
+} texture_t;
 
-    float *data();
-    const float *data() const;
-
-    uvec2_t size() const;
-    float lookup(const uvec2_t &index) const;
-    float sample(const vec2_t &pos) const;
-    void set(const uvec2_t &index, float brightness);
-    void clear();
-};
+void texture_create(texture_t *tex, uvec2_t dims);
+void texture_destroy(texture_t *tex);
+uvec2_t texture_size(const texture_t *self);
+float texture_lookup(const texture_t *self, uvec2_t index);
+float texture_sample(const texture_t *self, vec2_t pos);
+void texture_set(texture_t *self, uvec2_t index, float brightness);
+void texture_clear(texture_t *self);
 
 class Map final {
 private:
@@ -70,7 +67,7 @@ struct HitResult {
 
 class Renderer final {
 private:
-    Texture _fb;
+    texture_t _fb;
     Map _map;
     Camera _camera;
 

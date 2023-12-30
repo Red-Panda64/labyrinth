@@ -124,67 +124,73 @@ PAIR_OP_ASSIGNMENT(/, div)
 
 #undef PAIR_OP_ASSIGNMENT
 
+#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+#define MAX(a, b) ((a) >= (b) ? (a) : (b))
+
+
 constexpr unsigned WALL_TEXTURE_WIDTH = 6, WALL_TEXTURE_HEIGHT = 6;
-Texture WALL_TEXTURE{{WALL_TEXTURE_WIDTH, WALL_TEXTURE_HEIGHT}};
+texture_t WALL_TEXTURE;
 
 void init_wall_texture() {
+    texture_create(&WALL_TEXTURE, uvec2_t {WALL_TEXTURE_WIDTH, WALL_TEXTURE_HEIGHT});
     for(unsigned i = 0; i < WALL_TEXTURE_WIDTH; i++) {
         for(unsigned j = 0; j < WALL_TEXTURE_HEIGHT; j++) {
-            WALL_TEXTURE.set(uvec2_t {i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
+            texture_set(&WALL_TEXTURE, uvec2_t {i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
         }
     }
 }
 
-Texture::Texture(uvec2_t dims) : _dims{dims}, _buffer{std::make_unique<float[]>(dims.first * dims.second)}
+void texture_create(texture_t *tex, uvec2_t dims)
 {
+    if((unsigned)-1 / dims.first < dims.second)
+        // overflow
+        abort();
+    tex->_dims = dims;
+    tex->_buffer = (float *)calloc(dims.first * dims.second, sizeof(float));
 }
 
-float *Texture::data()
+void texture_destroy(texture_t *tex)
 {
-    return _buffer.get();
+    free(tex->_buffer);
+    tex->_buffer = NULL;
 }
 
-float Texture::sample(const vec2_t &uv) const
+float texture_sample(const texture_t *tex, vec2_t uv)
 {
-    unsigned x = _dims.first * uv.first;
-    x = std::min(x, _dims.first - 1);
-    unsigned y = _dims.second * uv.second;
-    y = std::min(y, _dims.second - 1);
-    return lookup({x, y});
+    unsigned x = tex->_dims.first * uv.first;
+    x = MIN(x, tex->_dims.first - 1);
+    unsigned y = tex->_dims.second * uv.second;
+    y = MIN(y, tex->_dims.second - 1);
+    return texture_lookup(tex, uvec2_t {x, y});
 }
 
-const float *Texture::data() const
+uvec2_t texture_size(const texture_t *tex)
 {
-    return _buffer.get();
+    return tex->_dims;
 }
 
-uvec2_t Texture::size() const
+float texture_lookup(const texture_t *tex, uvec2_t index)
 {
-    return _dims;
-}
-
-float Texture::lookup(const uvec2_t &index) const
-{
-    if (index.first > _dims.first || index.second > _dims.second)
+    if (index.first > tex->_dims.first || index.second > tex->_dims.second)
     {
         return 0.0;
     }
     /* Typically, the texture is traversed vertically*/
-    return _buffer[index.first * _dims.second + index.second];
+    return tex->_buffer[index.first * tex->_dims.second + index.second];
 }
 
-void Texture::set(const uvec2_t &index, float brightness)
+void texture_set(texture_t *tex, uvec2_t index, float brightness)
 {
-    if (index.first > _dims.first || index.second > _dims.second)
+    if (index.first > tex->_dims.first || index.second > tex->_dims.second)
     {
         return;
     }
-    _buffer[index.first * _dims.second + index.second] = brightness;
+    tex->_buffer[index.first * tex->_dims.second + index.second] = brightness;
 }
 
-void Texture::clear()
+void texture_clear(texture_t *tex)
 {
-    std::memset(_buffer.get(), 0, _dims.first * _dims.second * sizeof(float));
+    std::memset(tex->_buffer, 0, tex->_dims.first * tex->_dims.second * sizeof(float));
 }
 
 Camera::Camera(float fovx, float fovy) : _fovx{fovx}, _fovy{fovy}
@@ -226,8 +232,9 @@ float Camera::column_height(float dist)
     return REAL_COLUMN_HEIGHT / view_height;
 }
 
-Renderer::Renderer(Map &&map, uvec2_t framebuffer_size) : _map{std::move(map)}, _fb{framebuffer_size}, _camera{Camera::from_fovy(framebuffer_size, M_PI / 2)}
+Renderer::Renderer(Map &&map, uvec2_t framebuffer_size) : _map{std::move(map)}, _camera{Camera::from_fovy(framebuffer_size, M_PI / 2)}
 {
+    texture_create(&_fb, framebuffer_size);
 }
 
 ssize_t compute_starting_row(size_t screen_height, size_t wall_height) {
@@ -237,19 +244,18 @@ ssize_t compute_starting_row(size_t screen_height, size_t wall_height) {
 
 void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
 {
-    _fb.clear();
+    texture_clear(&_fb);
     look_dir = vec2_normalize(look_dir);
     float angle = -_camera.fovy() * 0.5f;
-    float dangle = _camera.fovy() / (_fb.size().first - 1);
-    const auto &fb_size = _fb.size();
-    for (size_t i = 0; i < fb_size.first; i++)
+    float dangle = _camera.fovy() / (_fb._dims.first - 1);
+    for (size_t i = 0; i < _fb._dims.first; i++)
     {
         vec2_t ray_dir = vec2_rotate(look_dir, angle);
         HitResult hit = ray(pos, ray_dir);
         float depth = vec2_norm(vec2_sub(hit.pos, pos));
         float height_ratio = _camera.column_height(depth);
 
-        size_t screen_height = fb_size.second;
+        size_t screen_height = _fb._dims.second;
         size_t wall_height = screen_height * height_ratio;
         size_t column_height = std::min(screen_height, wall_height);
         
@@ -260,7 +266,7 @@ void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
 
         for (size_t j = static_cast<size_t>(starting_row), k = 0; k < column_height; k++, j++)
         {
-            _fb.set(uvec2_t {(unsigned)i, (unsigned)j}, WALL_TEXTURE.sample(uv) * brightness_by_distance(depth));
+            texture_set(&_fb, uvec2_t {(unsigned)i, (unsigned)j}, texture_sample(&WALL_TEXTURE, uv) * brightness_by_distance(depth));
             uv.second += v_step;
         }
         angle += dangle;
@@ -323,7 +329,7 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
 
 void Renderer::render_fb()
 {
-    const auto &fb_size = _fb.size();
+    uvec2_t fb_size = texture_size(&_fb);
     size_t ascii_width = fb_size.first, ascii_height = fb_size.second / 2;
     size_t ascii_size = (ascii_width + 1) * ascii_height;
 
@@ -347,8 +353,8 @@ void Renderer::render_fb()
         for (size_t ascii_x = 0; ascii_x < ascii_width; ascii_x++)
         {
             // TODO: don't hardcode character ratio and sampling rate
-            float sample1 = _fb.lookup(uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y});
-            float sample2 = _fb.lookup(uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
+            float sample1 = texture_lookup(&_fb, uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y});
+            float sample2 = texture_lookup(&_fb, uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
             float brightness = (sample1 + sample2) * 0.5;
             ascii_image[ascii_y * (ascii_width + 1) + ascii_x] = brightness_to_ascii(brightness);
         }
