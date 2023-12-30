@@ -1,35 +1,40 @@
 #pragma once
 #include <memory>
 
-using Vec2 = std::pair<float, float>; 
-using UVec2 = std::pair<unsigned, unsigned>; 
+typedef struct {
+    float first, second;
+} vec2_t;
+
+typedef struct {
+    unsigned first, second;
+} uvec2_t;
 
 class Texture final {
     std::unique_ptr<float[]> _buffer;
-    UVec2 _dims;
+    uvec2_t _dims;
 public:
-    Texture(UVec2 dims);
+    Texture(uvec2_t dims);
 
     float *data();
     const float *data() const;
 
-    UVec2 size() const;
-    float lookup(const UVec2 &index) const;
-    float sample(const Vec2 &pos) const;
-    void set(const UVec2 &index, float brightness);
+    uvec2_t size() const;
+    float lookup(const uvec2_t &index) const;
+    float sample(const vec2_t &pos) const;
+    void set(const uvec2_t &index, float brightness);
     void clear();
 };
 
 class Map final {
 private:
     std::unique_ptr<uint8_t[]> _map;
-    UVec2 _dims;
+    uvec2_t _dims;
 
 public:
-    Map(UVec2 dims);
+    Map(uvec2_t dims);
 
-    void set(UVec2 pos, bool val);
-    bool check(UVec2 pos) const;
+    void set(uvec2_t pos, bool val);
+    bool check(uvec2_t pos) const;
 
     static Map from_string(std::string_view s);
 };
@@ -48,8 +53,8 @@ public:
     Camera &operator=(const Camera&) = default;
     Camera &operator=(Camera&&) noexcept = default;
 
-    static Camera from_fovy(UVec2 dims, float fovy);
-    static Camera from_fovx(UVec2 dims, float fovx);
+    static Camera from_fovy(uvec2_t dims, float fovy);
+    static Camera from_fovx(uvec2_t dims, float fovx);
 
     float fovy() const;
     float fovx() const;
@@ -59,7 +64,7 @@ public:
 
 struct HitResult {
     bool hit;
-    Vec2 pos;
+    vec2_t pos;
     float u;
 };
 
@@ -70,12 +75,12 @@ private:
     Camera _camera;
 
 public:
-    Renderer(Map &&map, UVec2 framebuffer_size);
+    Renderer(Map &&map, uvec2_t framebuffer_size);
 
-    void draw_from(Vec2 pos, Vec2 look_dir);
+    void draw_from(vec2_t pos, vec2_t look_dir);
     const Map &map() const;
 
 private:
-    HitResult ray(Vec2 pos, Vec2 dir) const;
+    HitResult ray(vec2_t pos, vec2_t dir) const;
     void render_fb();
 };
