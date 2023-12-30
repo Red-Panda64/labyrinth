@@ -1,5 +1,6 @@
 #pragma once
 #include <memory>
+#include <stdbool.h>
 
 typedef struct {
     float first, second;
@@ -22,19 +23,15 @@ float texture_sample(const texture_t *self, vec2_t pos);
 void texture_set(texture_t *self, uvec2_t index, float brightness);
 void texture_clear(texture_t *self);
 
-class Map final {
-private:
-    std::unique_ptr<uint8_t[]> _map;
+typedef struct {
+    uint8_t *_map;
     uvec2_t _dims;
+} map_t;
 
-public:
-    Map(uvec2_t dims);
-
-    void set(uvec2_t pos, bool val);
-    bool check(uvec2_t pos) const;
-
-    static Map from_string(std::string_view s);
-};
+void map_create(map_t *map, uvec2_t dims);
+void map_set(map_t *self, uvec2_t pos, bool val);
+bool map_check(const map_t *self, uvec2_t pos);
+int map_from_string(map_t *map, const char *s);
 
 class Camera final {
 private:
@@ -68,14 +65,14 @@ struct HitResult {
 class Renderer final {
 private:
     texture_t _fb;
-    Map _map;
+    map_t _map;
     Camera _camera;
 
 public:
-    Renderer(Map &&map, uvec2_t framebuffer_size);
+    Renderer(map_t *map, uvec2_t framebuffer_size);
 
     void draw_from(vec2_t pos, vec2_t look_dir);
-    const Map &map() const;
+    const map_t &map() const;
 
 private:
     HitResult ray(vec2_t pos, vec2_t dir) const;

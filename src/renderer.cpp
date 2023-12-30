@@ -142,7 +142,7 @@ void init_wall_texture() {
 
 void texture_create(texture_t *tex, uvec2_t dims)
 {
-    if((unsigned)-1 / dims.first < dims.second)
+    if(!dims.first || (unsigned)-1 / dims.first < dims.second)
         // overflow
         abort();
     tex->_dims = dims;
@@ -232,8 +232,11 @@ float Camera::column_height(float dist)
     return REAL_COLUMN_HEIGHT / view_height;
 }
 
-Renderer::Renderer(Map &&map, uvec2_t framebuffer_size) : _map{std::move(map)}, _camera{Camera::from_fovy(framebuffer_size, M_PI / 2)}
+Renderer::Renderer(map_t *map, uvec2_t framebuffer_size) : _camera{Camera::from_fovy(framebuffer_size, M_PI / 2)}
 {
+    _map = *map;
+    map->_map = NULL;
+    map->_dims = uvec2_t {0, 0};
     texture_create(&_fb, framebuffer_size);
 }
 
@@ -275,7 +278,7 @@ void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
     render_fb();
 }
 
-const Map &Renderer::map() const
+const map_t &Renderer::map() const
 {
     return _map;
 }
@@ -291,7 +294,7 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
     float xRemaining = (float)(cell_x + (dir.first >= 0.0f ? 1 : 0)) - pos.first;
     float yRemaining = (float)(cell_y + (dir.second >= 0.0f ? 1 : 0)) - pos.second;
     bool x_hit;
-    while (!_map.check(uvec2_t {(unsigned)cell_x, (unsigned)cell_y}))
+    while (!map_check(&_map, uvec2_t {(unsigned)cell_x, (unsigned)cell_y}))
     {
         float xStep = xRemaining / dir.first;
         float yStep = yRemaining / dir.second;
@@ -365,75 +368,106 @@ void Renderer::render_fb()
     std::cout << std::string_view(ascii_image.get(), ascii_size);
 }
 
-Map::Map(uvec2_t dims) : _map{std::make_unique<uint8_t[]>((dims.first * dims.second + 7) / 8)}, _dims{dims}
+void map_create(map_t *map, uvec2_t dims)
 {
+    if(!dims.first || (unsigned)-1 / dims.first <= dims.second || dims.first * dims.second + 7 < dims.first * dims.second)
+        // overflow
+        abort();
+    map->_map = (uint8_t*)calloc((dims.first * dims.second + 7) / 8, sizeof(uint8_t)); 
+    map->_dims = dims;
 }
 
-void Map::set(uvec2_t pos, bool val)
+void map_set(map_t *map, uvec2_t pos, bool val)
 {
-    if (pos.first > _dims.first || pos.second > _dims.second)
+    if (pos.first > map->_dims.first || pos.second > map->_dims.second)
         return;
-    size_t linear_index = pos.first * _dims.second + pos.second;
+    size_t linear_index = pos.first * map->_dims.second + pos.second;
 
     if (val)
     {
-        _map[linear_index / 8] |= (1 << linear_index % 8);
+        map->_map[linear_index / 8] |= (1 << linear_index % 8);
     }
     else
     {
-        _map[linear_index / 8] &= ~(1 << linear_index % 8);
+        map->_map[linear_index / 8] &= ~(1 << linear_index % 8);
     }
 }
 
-bool Map::check(uvec2_t pos) const
+bool map_check(const map_t *map, uvec2_t pos)
 {
-    if (pos.first > _dims.first || pos.second > _dims.second)
+    if (pos.first > map->_dims.first || pos.second > map->_dims.second)
         return true;
-    size_t linear_index = pos.first * _dims.second + pos.second;
+    size_t linear_index = pos.first * map->_dims.second + pos.second;
 
-    return _map[linear_index / 8] & (1 << linear_index % 8);
+    return map->_map[linear_index / 8] & (1 << linear_index % 8);
 }
 
-Map Map::from_string(std::string_view s)
+int map_from_string(map_t *map, const char *s)
 {
-    size_t height = std::count(s.begin(), s.end(), '\n') + 1;
-    size_t width = std::find(s.begin(), s.end(), '\n') - s.begin();
-    Map map(uvec2_t { (unsigned)width, (unsigned)height });
+    size_t height = 0;// std::count(s.begin(), s.end(), '\n') + 1;
+    size_t width = (size_t)-1;// std::find(s.begin(), s.end(), '\n') - s.begin();
+    size_t strlen = 0;
+
+    size_t tmp_width = 0;
+    do {
+        switch(s[strlen]) {
+            case '0':
+                if(tmp_width == 0)
+                    break;
+                // FALL-THROUGH
+            case '\n':
+                height += 1;
+                if(width != (size_t)-1 && width != tmp_width)
+                    return -1;
+                width = tmp_width;
+                tmp_width = 0;
+                break;
+            default:
+                tmp_width++;
+                break;
+        }
+    } while(s[strlen++]);
+
+    if(width == (size_t) -1) {
+        return -1;
+    }
+
+    map_create(map, uvec2_t { (unsigned)width, (unsigned)height });
     size_t x = 0;
     size_t y = height - 1;
-    for (char c : s)
+    for (size_t i = 0; i < strlen; i++)
     {
-        switch (c)
+        switch (s[i])
         {
         case '\n':
             --y;
             x = 0;
             break;
         case '#':
-            // bounds check is handled by Map::set
-            map.set(uvec2_t { (unsigned)x, (unsigned)y }, true);
+            // bounds check is handled by map_set
+            map_set(map, uvec2_t { (unsigned)x, (unsigned)y }, true);
             ++x;
             break;
         default:
-            map.set(uvec2_t { (unsigned)x, (unsigned)y }, false);
+            map_set(map, uvec2_t { (unsigned)x, (unsigned)y }, false);
             ++x;
             break;
         }
     }
-    return map;
+    return 0;
 }
 
-const std::string map_example =
-R"(##############################
-#  ###          #    #   #   #
-#       ##### # # ## # ###   #
-######  #     # # #    #     #
-#    #  # ##### # # #####    #
-# ## #  #         #   # #    #
-# #     # ############# #    #
-# ## #### # #### #      #    #
-#                # ###       #
-##############################)";
+const char *map_example =
+"##############################\n"
+"#  ###          #    #   #   #\n"
+"#       ##### # # ## # ###   #\n"
+"######  #     # # #    #     #\n"
+"#    #  # ##### # # #####    #\n"
+"# ## #  #         #   # #    #\n"
+"# #     # ############# #    #\n"
+"# ## #### # #### #      #    #\n"
+"#                # ###       #\n"
+"##############################\n";
 
 struct inputs_t
 {
@@ -521,8 +555,9 @@ int main()
 
     init_wall_texture();
 
-    Map map = Map::from_string(map_example);
-    Renderer r{std::move(map), uvec2_t {(unsigned)ascii_width, (unsigned)ascii_height * 2}};
+    map_t map;
+    map_from_string(&map, map_example);
+    Renderer r{&map, uvec2_t {(unsigned)ascii_width, (unsigned)ascii_height * 2}};
     auto target_frame_duration = std::chrono::milliseconds(1000) / 30;
 
     vec2_t player_pos = {1.5, 1.5};
@@ -568,7 +603,7 @@ int main()
         if(inputs.turn_right) {
             player_dir = vec2_rotate(player_dir, rotation_factor);
         }
-        if(r.map().check(uvec2_t {(unsigned)player_pos.first, (unsigned)player_pos.second})) {
+        if(map_check(&r.map(), uvec2_t {(unsigned)player_pos.first, (unsigned)player_pos.second})) {
             player_pos = old_pos;
         }
 
