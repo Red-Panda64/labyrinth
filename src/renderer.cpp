@@ -144,7 +144,7 @@ void init_wall_texture()
     {
         for (unsigned j = 0; j < WALL_TEXTURE_HEIGHT; j++)
         {
-            texture_set(&WALL_TEXTURE, uvec2_t{i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
+            texture_set(&WALL_TEXTURE, uvec2_t{i, j}, (i & 1) ^ (j & 1) ? 1.0 : 0.5);
         }
     }
 }
@@ -230,13 +230,13 @@ float column_height(camera_t *camera, float dist)
     return REAL_COLUMN_HEIGHT / view_height;
 }
 
-Renderer::Renderer(map_t *map, uvec2_t framebuffer_size)
+void renderer_create(renderer_t *renderer, map_t *map, uvec2_t framebuffer_size)
 {
-    _map = *map;
+    renderer->_map = *map;
     map->_map = NULL;
     map->_dims = uvec2_t{0, 0};
-    texture_create(&_fb, framebuffer_size);
-    camera_from_fovy(&_camera, framebuffer_size, M_PI_2f32);
+    texture_create(&renderer->_fb, framebuffer_size);
+    camera_from_fovy(&renderer->_camera, framebuffer_size, M_PI_2f32);
 }
 
 ssize_t compute_starting_row(size_t screen_height, size_t wall_height)
@@ -245,20 +245,20 @@ ssize_t compute_starting_row(size_t screen_height, size_t wall_height)
     return wall_center - static_cast<ssize_t>(wall_height) / 2;
 }
 
-void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
+void renderer_draw_from(renderer_t *renderer, vec2_t pos, vec2_t look_dir)
 {
-    texture_clear(&_fb);
+    texture_clear(&renderer->_fb);
     look_dir = vec2_normalize(look_dir);
-    float angle = -_camera._fovy * 0.5f;
-    float dangle = _camera._fovy / (_fb._dims.first - 1);
-    for (size_t i = 0; i < _fb._dims.first; i++)
+    float angle = -renderer->_camera._fovy * 0.5f;
+    float dangle = renderer->_camera._fovy / (renderer->_fb._dims.first - 1);
+    for (size_t i = 0; i < renderer->_fb._dims.first; i++)
     {
         vec2_t ray_dir = vec2_rotate(look_dir, angle);
-        HitResult hit = ray(pos, ray_dir);
+        HitResult hit = renderer_ray(renderer, pos, ray_dir);
         float depth = vec2_norm(vec2_sub(hit.pos, pos));
-        float height_ratio = column_height(&_camera, depth);
+        float height_ratio = column_height(&renderer->_camera, depth);
 
-        size_t screen_height = _fb._dims.second;
+        size_t screen_height = renderer->_fb._dims.second;
         size_t wall_height = screen_height * height_ratio;
         size_t column_height = std::min(screen_height, wall_height);
 
@@ -269,21 +269,16 @@ void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
 
         for (size_t j = static_cast<size_t>(starting_row), k = 0; k < column_height; k++, j++)
         {
-            texture_set(&_fb, uvec2_t{(unsigned)i, (unsigned)j}, texture_sample(&WALL_TEXTURE, uv) * brightness_by_distance(depth));
+            texture_set(&renderer->_fb, uvec2_t{(unsigned)i, (unsigned)j}, texture_sample(&WALL_TEXTURE, uv) * brightness_by_distance(depth));
             uv.second += v_step;
         }
         angle += dangle;
     }
     std::cout << std::endl;
-    render_fb();
+    renderer_show_fb(renderer);
 }
 
-const map_t &Renderer::map() const
-{
-    return _map;
-}
-
-HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
+HitResult renderer_ray(const renderer_t *renderer, vec2_t pos, vec2_t dir)
 {
     float x = pos.first;
     float y = pos.second;
@@ -294,7 +289,7 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
     float xRemaining = (float)(cell_x + (dir.first >= 0.0f ? 1 : 0)) - pos.first;
     float yRemaining = (float)(cell_y + (dir.second >= 0.0f ? 1 : 0)) - pos.second;
     bool x_hit;
-    while (!map_check(&_map, uvec2_t{(unsigned)cell_x, (unsigned)cell_y}))
+    while (!map_check(&renderer->_map, uvec2_t{(unsigned)cell_x, (unsigned)cell_y}))
     {
         float xStep = xRemaining / dir.first;
         float yStep = yRemaining / dir.second;
@@ -333,9 +328,9 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
     return HitResult{true, {x, y}, u};
 }
 
-void Renderer::render_fb()
+void renderer_show_fb(const renderer_t *renderer)
 {
-    uvec2_t fb_size = texture_size(&_fb);
+    uvec2_t fb_size = texture_size(&renderer->_fb);
     size_t ascii_width = fb_size.first, ascii_height = fb_size.second / 2;
     size_t ascii_size = (ascii_width + 1) * ascii_height;
 
@@ -359,8 +354,8 @@ void Renderer::render_fb()
         for (size_t ascii_x = 0; ascii_x < ascii_width; ascii_x++)
         {
             // TODO: don't hardcode character ratio and sampling rate
-            float sample1 = texture_lookup(&_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y});
-            float sample2 = texture_lookup(&_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
+            float sample1 = texture_lookup(&renderer->_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y});
+            float sample2 = texture_lookup(&renderer->_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
             float brightness = (sample1 + sample2) * 0.5;
             ascii_image[ascii_y * (ascii_width + 1) + ascii_x] = brightness_to_ascii(brightness);
         }
@@ -407,8 +402,8 @@ bool map_check(const map_t *map, uvec2_t pos)
 
 int map_from_string(map_t *map, const char *s)
 {
-    size_t height = 0;         // std::count(s.begin(), s.end(), '\n') + 1;
-    size_t width = (size_t)-1; // std::find(s.begin(), s.end(), '\n') - s.begin();
+    size_t height = 0;
+    size_t width = (size_t)-1;
     size_t strlen = 0;
 
     size_t tmp_width = 0;
@@ -561,7 +556,8 @@ int main()
 
     map_t map;
     map_from_string(&map, map_example);
-    Renderer r{&map, uvec2_t{(unsigned)ascii_width, (unsigned)ascii_height * 2}};
+    renderer_t r;
+    renderer_create(&r, &map, uvec2_t {(unsigned)ascii_width, (unsigned)ascii_height * 2});
     auto target_frame_duration = std::chrono::milliseconds(1000) / 30;
 
     vec2_t player_pos = {1.5, 1.5};
@@ -574,7 +570,7 @@ int main()
     while (true)
     {
         auto frame_start = std::chrono::high_resolution_clock::now();
-        r.draw_from(player_pos, player_dir);
+        renderer_draw_from(&r, player_pos, player_dir);
         auto frame_end = std::chrono::high_resolution_clock::now();
         auto real_frame_duration = (frame_end - frame_start);
         if (target_frame_duration > real_frame_duration)
@@ -613,7 +609,7 @@ int main()
         {
             player_dir = vec2_rotate(player_dir, rotation_factor);
         }
-        if (map_check(&r.map(), uvec2_t{(unsigned)player_pos.first, (unsigned)player_pos.second}))
+        if (map_check(&r._map, uvec2_t{(unsigned)player_pos.first, (unsigned)player_pos.second}))
         {
             player_pos = old_pos;
         }

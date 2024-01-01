@@ -47,19 +47,13 @@ struct HitResult {
     float u;
 };
 
-class Renderer final {
-private:
+typedef struct {
     texture_t _fb;
     map_t _map;
     camera_t _camera;
+} renderer_t;
 
-public:
-    Renderer(map_t *map, uvec2_t framebuffer_size);
-
-    void draw_from(vec2_t pos, vec2_t look_dir);
-    const map_t &map() const;
-
-private:
-    HitResult ray(vec2_t pos, vec2_t dir) const;
-    void render_fb();
-};
+void renderer_create(renderer_t *renderer, map_t *map, uvec2_t framebuffer_size);
+void renderer_draw_from(renderer_t *self, vec2_t pos, vec2_t look_dir);
+HitResult renderer_ray(const renderer_t *self, vec2_t pos, vec2_t dir);
+void renderer_show_fb(const renderer_t *self);
