@@ -33,28 +33,13 @@ void map_set(map_t *self, uvec2_t pos, bool val);
 bool map_check(const map_t *self, uvec2_t pos);
 int map_from_string(map_t *map, const char *s);
 
-class Camera final {
-private:
-    float _fovx;
-    float _fovy;
+typedef struct {
+    float _fovx, _fovy;
+} camera_t;
 
-    Camera(float fovx, float fovy);
-
-    static constexpr float REAL_COLUMN_HEIGHT = 1.0f;
-public:
-    Camera(const Camera&) = default;
-    Camera(Camera&&) noexcept = default;
-    Camera &operator=(const Camera&) = default;
-    Camera &operator=(Camera&&) noexcept = default;
-
-    static Camera from_fovy(uvec2_t dims, float fovy);
-    static Camera from_fovx(uvec2_t dims, float fovx);
-
-    float fovy() const;
-    float fovx() const;
-
-    float column_height(float dist);
-};
+void camera_from_fovy(camera_t *camera, uvec2_t dims, float fovy);
+void camera_from_fovx(camera_t *camera, uvec2_t dims, float fovx);
+float column_height(const camera_t *camera, float dist);
 
 struct HitResult {
     bool hit;
@@ -66,7 +51,7 @@ class Renderer final {
 private:
     texture_t _fb;
     map_t _map;
-    Camera _camera;
+    camera_t _camera;
 
 public:
     Renderer(map_t *map, uvec2_t framebuffer_size);

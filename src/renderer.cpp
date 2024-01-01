@@ -14,9 +14,11 @@
 
 struct termios old_settings;
 
-void setup_tty() {
+void setup_tty()
+{
     struct termios raw;
-    if(!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &old_settings) < 0) {
+    if (!isatty(STDIN_FILENO) || tcgetattr(STDIN_FILENO, &old_settings) < 0)
+    {
         exit(1);
     }
     raw = old_settings;
@@ -32,7 +34,8 @@ void restore_tty()
     std::cout << "\e[?1049l\e 8\e[u\e[?25h" << std::endl;
 }
 
-void signal_cleanup(int) {
+void signal_cleanup(int)
+{
     restore_tty();
     exit(0);
 }
@@ -78,44 +81,48 @@ static float vec2_norm(vec2_t vec)
 static vec2_t vec2_normalize(vec2_t vec)
 {
     float len = vec2_norm(vec);
-    return vec2_t {vec.first / len, vec.second / len};
+    return vec2_t{vec.first / len, vec.second / len};
 }
 
 static vec2_t vec2_rotate(vec2_t vec, float angle)
 {
     float sin = sinf(angle);
     float cos = cosf(angle);
-    return vec2_t {vec.first * cos + vec.second * sin, vec.second * cos - vec.first * sin};
+    return vec2_t{vec.first * cos + vec.second * sin, vec.second * cos - vec.first * sin};
 }
 
 #define CONCAT(a, b) a##b
 #define CONCAT2(a, b) CONCAT(a, b)
 
-#define PAIR_OP_ASSIGNMENT(op, name) \
-vec2_t CONCAT(vec2_, name)(vec2_t a, vec2_t b) { \
-    vec2_t out; \
-    out.first = a.first op b.first; \
-    out.second = a.second op b.second; \
-    return out; \
-} \
-vec2_t CONCAT2(vec2_, CONCAT(name, _scalar))(vec2_t a, float b) { \
-    vec2_t out; \
-    out.first = a.first op b; \
-    out.second = a.second op b; \
-    return out; \
-} \
-uvec2_t CONCAT(uvec2_, name)(uvec2_t a, uvec2_t b) { \
-    uvec2_t out; \
-    out.first = a.first op b.first; \
-    out.second = a.second op b.second; \
-    return out; \
-} \
-uvec2_t CONCAT2(uvec2_, CONCAT(name, _scalar))(uvec2_t a, unsigned b) { \
-    uvec2_t out; \
-    out.first = a.first op b; \
-    out.second = a.second op b; \
-    return out; \
-}
+#define PAIR_OP_ASSIGNMENT(op, name)                                      \
+    vec2_t CONCAT(vec2_, name)(vec2_t a, vec2_t b)                        \
+    {                                                                     \
+        vec2_t out;                                                       \
+        out.first = a.first op b.first;                                   \
+        out.second = a.second op b.second;                                \
+        return out;                                                       \
+    }                                                                     \
+    vec2_t CONCAT2(vec2_, CONCAT(name, _scalar))(vec2_t a, float b)       \
+    {                                                                     \
+        vec2_t out;                                                       \
+        out.first = a.first op b;                                         \
+        out.second = a.second op b;                                       \
+        return out;                                                       \
+    }                                                                     \
+    uvec2_t CONCAT(uvec2_, name)(uvec2_t a, uvec2_t b)                    \
+    {                                                                     \
+        uvec2_t out;                                                      \
+        out.first = a.first op b.first;                                   \
+        out.second = a.second op b.second;                                \
+        return out;                                                       \
+    }                                                                     \
+    uvec2_t CONCAT2(uvec2_, CONCAT(name, _scalar))(uvec2_t a, unsigned b) \
+    {                                                                     \
+        uvec2_t out;                                                      \
+        out.first = a.first op b;                                         \
+        out.second = a.second op b;                                       \
+        return out;                                                       \
+    }
 
 PAIR_OP_ASSIGNMENT(+, add)
 PAIR_OP_ASSIGNMENT(-, sub)
@@ -127,22 +134,24 @@ PAIR_OP_ASSIGNMENT(/, div)
 #define MIN(a, b) ((a) <= (b) ? (a) : (b))
 #define MAX(a, b) ((a) >= (b) ? (a) : (b))
 
-
 constexpr unsigned WALL_TEXTURE_WIDTH = 6, WALL_TEXTURE_HEIGHT = 6;
 texture_t WALL_TEXTURE;
 
-void init_wall_texture() {
-    texture_create(&WALL_TEXTURE, uvec2_t {WALL_TEXTURE_WIDTH, WALL_TEXTURE_HEIGHT});
-    for(unsigned i = 0; i < WALL_TEXTURE_WIDTH; i++) {
-        for(unsigned j = 0; j < WALL_TEXTURE_HEIGHT; j++) {
-            texture_set(&WALL_TEXTURE, uvec2_t {i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
+void init_wall_texture()
+{
+    texture_create(&WALL_TEXTURE, uvec2_t{WALL_TEXTURE_WIDTH, WALL_TEXTURE_HEIGHT});
+    for (unsigned i = 0; i < WALL_TEXTURE_WIDTH; i++)
+    {
+        for (unsigned j = 0; j < WALL_TEXTURE_HEIGHT; j++)
+        {
+            texture_set(&WALL_TEXTURE, uvec2_t{i, j}, (i & 1) ^ (j & 1) == 1 ? 1.0 : 0.5);
         }
     }
 }
 
 void texture_create(texture_t *tex, uvec2_t dims)
 {
-    if(!dims.first || (unsigned)-1 / dims.first < dims.second)
+    if (!dims.first || (unsigned)-1 / dims.first < dims.second)
         // overflow
         abort();
     tex->_dims = dims;
@@ -161,7 +170,7 @@ float texture_sample(const texture_t *tex, vec2_t uv)
     x = MIN(x, tex->_dims.first - 1);
     unsigned y = tex->_dims.second * uv.second;
     y = MIN(y, tex->_dims.second - 1);
-    return texture_lookup(tex, uvec2_t {x, y});
+    return texture_lookup(tex, uvec2_t{x, y});
 }
 
 uvec2_t texture_size(const texture_t *tex)
@@ -193,11 +202,9 @@ void texture_clear(texture_t *tex)
     std::memset(tex->_buffer, 0, tex->_dims.first * tex->_dims.second * sizeof(float));
 }
 
-Camera::Camera(float fovx, float fovy) : _fovx{fovx}, _fovy{fovy}
-{
-}
+static const float REAL_COLUMN_HEIGHT = 1.0f;
 
-Camera Camera::from_fovy(uvec2_t dims, float fovy)
+void camera_from_fovy(camera_t *camera, uvec2_t dims, float fovy)
 {
     double x = dims.first;
     double y = dims.second;
@@ -205,42 +212,35 @@ Camera Camera::from_fovy(uvec2_t dims, float fovy)
     // cos(x/2 * d) = fovx / 2
     float d = 2 * std::acos(fovy * 0.5) / y;
     float fovx = 2 * std::cos(x * 0.5 * d);
-    return Camera(fovx, fovy);
+    camera->_fovx = fovx;
+    camera->_fovy = fovy;
 }
 
-Camera Camera::from_fovx(uvec2_t dims, float fovx)
+void camera_from_fovx(camera_t *camera, uvec2_t dims, float fovx)
 {
-    Camera c = Camera::from_fovy({dims.second, dims.first}, fovx);
-    float new_fovx = c._fovy;
-    float new_fovy = c._fovx;
-    return Camera(new_fovx, new_fovy);
+    camera_from_fovy(camera, uvec2_t{dims.second, dims.first}, fovx);
+    float tmp = camera->_fovy;
+    camera->_fovy = camera->_fovx;
+    camera->_fovx = tmp;
 }
 
-float Camera::fovy() const
+float column_height(camera_t *camera, float dist)
 {
-    return _fovy;
-}
-
-float Camera::fovx() const
-{
-    return _fovx;
-}
-
-float Camera::column_height(float dist)
-{
-    float view_height = std::atan(_fovy * 0.5f) * dist * 2.0f;
+    float view_height = std::atan(camera->_fovy * 0.5f) * dist * 2.0f;
     return REAL_COLUMN_HEIGHT / view_height;
 }
 
-Renderer::Renderer(map_t *map, uvec2_t framebuffer_size) : _camera{Camera::from_fovy(framebuffer_size, M_PI / 2)}
+Renderer::Renderer(map_t *map, uvec2_t framebuffer_size)
 {
     _map = *map;
     map->_map = NULL;
-    map->_dims = uvec2_t {0, 0};
+    map->_dims = uvec2_t{0, 0};
     texture_create(&_fb, framebuffer_size);
+    camera_from_fovy(&_camera, framebuffer_size, M_PI_2f32);
 }
 
-ssize_t compute_starting_row(size_t screen_height, size_t wall_height) {
+ssize_t compute_starting_row(size_t screen_height, size_t wall_height)
+{
     size_t wall_center = screen_height / 2;
     return wall_center - static_cast<ssize_t>(wall_height) / 2;
 }
@@ -249,27 +249,27 @@ void Renderer::draw_from(vec2_t pos, vec2_t look_dir)
 {
     texture_clear(&_fb);
     look_dir = vec2_normalize(look_dir);
-    float angle = -_camera.fovy() * 0.5f;
-    float dangle = _camera.fovy() / (_fb._dims.first - 1);
+    float angle = -_camera._fovy * 0.5f;
+    float dangle = _camera._fovy / (_fb._dims.first - 1);
     for (size_t i = 0; i < _fb._dims.first; i++)
     {
         vec2_t ray_dir = vec2_rotate(look_dir, angle);
         HitResult hit = ray(pos, ray_dir);
         float depth = vec2_norm(vec2_sub(hit.pos, pos));
-        float height_ratio = _camera.column_height(depth);
+        float height_ratio = column_height(&_camera, depth);
 
         size_t screen_height = _fb._dims.second;
         size_t wall_height = screen_height * height_ratio;
         size_t column_height = std::min(screen_height, wall_height);
-        
+
         float v_step = 1.0 / (wall_height - 1);
         ssize_t starting_row = std::max(static_cast<ssize_t>(0), compute_starting_row(screen_height, column_height));
-        ssize_t unlimited_starting_row = compute_starting_row(screen_height, wall_height); 
+        ssize_t unlimited_starting_row = compute_starting_row(screen_height, wall_height);
         vec2_t uv = {hit.u, v_step * (starting_row - unlimited_starting_row)};
 
         for (size_t j = static_cast<size_t>(starting_row), k = 0; k < column_height; k++, j++)
         {
-            texture_set(&_fb, uvec2_t {(unsigned)i, (unsigned)j}, texture_sample(&WALL_TEXTURE, uv) * brightness_by_distance(depth));
+            texture_set(&_fb, uvec2_t{(unsigned)i, (unsigned)j}, texture_sample(&WALL_TEXTURE, uv) * brightness_by_distance(depth));
             uv.second += v_step;
         }
         angle += dangle;
@@ -294,7 +294,7 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
     float xRemaining = (float)(cell_x + (dir.first >= 0.0f ? 1 : 0)) - pos.first;
     float yRemaining = (float)(cell_y + (dir.second >= 0.0f ? 1 : 0)) - pos.second;
     bool x_hit;
-    while (!map_check(&_map, uvec2_t {(unsigned)cell_x, (unsigned)cell_y}))
+    while (!map_check(&_map, uvec2_t{(unsigned)cell_x, (unsigned)cell_y}))
     {
         float xStep = xRemaining / dir.first;
         float yStep = yRemaining / dir.second;
@@ -322,9 +322,12 @@ HitResult Renderer::ray(vec2_t pos, vec2_t dir) const
         }
     }
     float u;
-    if(x_hit) {
+    if (x_hit)
+    {
         u = yDelta >= 0 ? yRemaining : 1.0 + yRemaining;
-    } else {
+    }
+    else
+    {
         u = xDelta >= 0 ? xRemaining : 1.0 + xRemaining;
     }
     return HitResult{true, {x, y}, u};
@@ -356,8 +359,8 @@ void Renderer::render_fb()
         for (size_t ascii_x = 0; ascii_x < ascii_width; ascii_x++)
         {
             // TODO: don't hardcode character ratio and sampling rate
-            float sample1 = texture_lookup(&_fb, uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y});
-            float sample2 = texture_lookup(&_fb, uvec2_t {(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
+            float sample1 = texture_lookup(&_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y});
+            float sample2 = texture_lookup(&_fb, uvec2_t{(unsigned)ascii_x, 2 * (unsigned)ascii_y + 1});
             float brightness = (sample1 + sample2) * 0.5;
             ascii_image[ascii_y * (ascii_width + 1) + ascii_x] = brightness_to_ascii(brightness);
         }
@@ -370,10 +373,10 @@ void Renderer::render_fb()
 
 void map_create(map_t *map, uvec2_t dims)
 {
-    if(!dims.first || (unsigned)-1 / dims.first <= dims.second || dims.first * dims.second + 7 < dims.first * dims.second)
+    if (!dims.first || (unsigned)-1 / dims.first <= dims.second || dims.first * dims.second + 7 < dims.first * dims.second)
         // overflow
         abort();
-    map->_map = (uint8_t*)calloc((dims.first * dims.second + 7) / 8, sizeof(uint8_t)); 
+    map->_map = (uint8_t *)calloc((dims.first * dims.second + 7) / 8, sizeof(uint8_t));
     map->_dims = dims;
 }
 
@@ -404,35 +407,38 @@ bool map_check(const map_t *map, uvec2_t pos)
 
 int map_from_string(map_t *map, const char *s)
 {
-    size_t height = 0;// std::count(s.begin(), s.end(), '\n') + 1;
-    size_t width = (size_t)-1;// std::find(s.begin(), s.end(), '\n') - s.begin();
+    size_t height = 0;         // std::count(s.begin(), s.end(), '\n') + 1;
+    size_t width = (size_t)-1; // std::find(s.begin(), s.end(), '\n') - s.begin();
     size_t strlen = 0;
 
     size_t tmp_width = 0;
-    do {
-        switch(s[strlen]) {
-            case '0':
-                if(tmp_width == 0)
-                    break;
-                // FALL-THROUGH
-            case '\n':
-                height += 1;
-                if(width != (size_t)-1 && width != tmp_width)
-                    return -1;
-                width = tmp_width;
-                tmp_width = 0;
+    do
+    {
+        switch (s[strlen])
+        {
+        case '0':
+            if (tmp_width == 0)
                 break;
-            default:
-                tmp_width++;
-                break;
+            // FALL-THROUGH
+        case '\n':
+            height += 1;
+            if (width != (size_t)-1 && width != tmp_width)
+                return -1;
+            width = tmp_width;
+            tmp_width = 0;
+            break;
+        default:
+            tmp_width++;
+            break;
         }
-    } while(s[strlen++]);
+    } while (s[strlen++]);
 
-    if(width == (size_t) -1) {
+    if (width == (size_t)-1)
+    {
         return -1;
     }
 
-    map_create(map, uvec2_t { (unsigned)width, (unsigned)height });
+    map_create(map, uvec2_t{(unsigned)width, (unsigned)height});
     size_t x = 0;
     size_t y = height - 1;
     for (size_t i = 0; i < strlen; i++)
@@ -445,11 +451,11 @@ int map_from_string(map_t *map, const char *s)
             break;
         case '#':
             // bounds check is handled by map_set
-            map_set(map, uvec2_t { (unsigned)x, (unsigned)y }, true);
+            map_set(map, uvec2_t{(unsigned)x, (unsigned)y}, true);
             ++x;
             break;
         default:
-            map_set(map, uvec2_t { (unsigned)x, (unsigned)y }, false);
+            map_set(map, uvec2_t{(unsigned)x, (unsigned)y}, false);
             ++x;
             break;
         }
@@ -458,16 +464,16 @@ int map_from_string(map_t *map, const char *s)
 }
 
 const char *map_example =
-"##############################\n"
-"#  ###          #    #   #   #\n"
-"#       ##### # # ## # ###   #\n"
-"######  #     # # #    #     #\n"
-"#    #  # ##### # # #####    #\n"
-"# ## #  #         #   # #    #\n"
-"# #     # ############# #    #\n"
-"# ## #### # #### #      #    #\n"
-"#                # ###       #\n"
-"##############################\n";
+    "##############################\n"
+    "#  ###          #    #   #   #\n"
+    "#       ##### # # ## # ###   #\n"
+    "######  #     # # #    #     #\n"
+    "#    #  # ##### # # #####    #\n"
+    "# ## #  #         #   # #    #\n"
+    "# #     # ############# #    #\n"
+    "# ## #### # #### #      #    #\n"
+    "#                # ###       #\n"
+    "##############################\n";
 
 struct inputs_t
 {
@@ -535,13 +541,11 @@ inputs_t handle_input()
     return inputs;
 }
 
-
-
-
 int main()
 {
     std::ofstream logfile("labyrinth.log");
-    if(!isatty(STDOUT_FILENO)) {
+    if (!isatty(STDOUT_FILENO))
+    {
         logfile << "STDOUT not a tty!\n";
         exit(1);
     }
@@ -557,7 +561,7 @@ int main()
 
     map_t map;
     map_from_string(&map, map_example);
-    Renderer r{&map, uvec2_t {(unsigned)ascii_width, (unsigned)ascii_height * 2}};
+    Renderer r{&map, uvec2_t{(unsigned)ascii_width, (unsigned)ascii_height * 2}};
     auto target_frame_duration = std::chrono::milliseconds(1000) / 30;
 
     vec2_t player_pos = {1.5, 1.5};
@@ -585,27 +589,33 @@ int main()
         }
         inputs_t inputs = handle_input();
         vec2_t old_pos = player_pos;
-        if(inputs.forward) {
+        if (inputs.forward)
+        {
             player_pos = vec2_add(player_pos, vec2_mul_scalar(player_dir, movement_factor));
         }
-        if(inputs.backward) {
+        if (inputs.backward)
+        {
             player_pos = vec2_sub(player_pos, vec2_mul_scalar(player_dir, movement_factor));
         }
-        if(inputs.left) {
+        if (inputs.left)
+        {
             player_pos = vec2_sub(player_pos, vec2_mul_scalar(vec2_rotate(player_dir, M_PI_2f32), rotation_factor));
         }
-        if(inputs.right) {
+        if (inputs.right)
+        {
             player_pos = vec2_add(player_pos, vec2_mul_scalar(vec2_rotate(player_dir, M_PI_2f32), rotation_factor));
         }
-        if(inputs.turn_left) {
+        if (inputs.turn_left)
+        {
             player_dir = vec2_rotate(player_dir, -rotation_factor);
         }
-        if(inputs.turn_right) {
+        if (inputs.turn_right)
+        {
             player_dir = vec2_rotate(player_dir, rotation_factor);
         }
-        if(map_check(&r.map(), uvec2_t {(unsigned)player_pos.first, (unsigned)player_pos.second})) {
+        if (map_check(&r.map(), uvec2_t{(unsigned)player_pos.first, (unsigned)player_pos.second}))
+        {
             player_pos = old_pos;
         }
-
     }
 }
