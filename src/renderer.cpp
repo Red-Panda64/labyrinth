@@ -1,17 +1,17 @@
 #include "renderer.h"
+#include <stdio.h>
 #include <math.h>
-#include <algorithm>
-#include <iostream>
-#include <fstream>
-#include <string_view>
 #include <sys/ioctl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
-#include <cstring>
+#include <string.h>
 #include <signal.h>
-#include <chrono>
-#include <thread>
 #include <termio.h>
+#include <fcntl.h>
+#include <time.h>
 
+int LOGFILE = -1;
 struct termios old_settings;
 
 void setup_tty()
@@ -25,13 +25,13 @@ void setup_tty()
     raw.c_lflag &= ~(ECHO | ICANON);
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw);
 
-    std::cout << "\e 7\e[s" << std::endl;
+    puts("\e 7\e[s\n");
 }
 
 void restore_tty()
 {
     tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_settings);
-    std::cout << "\e[?1049l\e 8\e[u\e[?25h" << std::endl;
+    puts("\e[?1049l\e 8\e[u\e[?25h\n");
 }
 
 void signal_cleanup(int)
@@ -40,8 +40,7 @@ void signal_cleanup(int)
     exit(0);
 }
 
-// const char *CHAR_PIXEL_TABLE = R"##($@B%8&WM#*oahkbdpqwmZO0QLCJUYXzcvunxrjft/\|()1{}[]?-_+~<>i!lI;:,"^`'. )##";
-const char *CHAR_PIXEL_TABLE = R"( `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@)";
+const char *CHAR_PIXEL_TABLE = " `.-':_,^=;><+!rc*/z?sLTv)J7(|Fi{C}fI31tlu[neoZ5Yxjya]2ESwqkP6h9d4VpOGbUAKXHm8RD#$Bg0MNWQ%&@";
 const float CHAR_BRIGHTNESS_TABLE[] = {0.001, 0.0751, 0.0829, 0.0848, 0.1227, 0.1403, 0.1559, 0.185, 0.2183, 0.2417, 0.2571, 0.2852,
                                        0.2902, 0.2919, 0.3099, 0.3192, 0.3232, 0.3294, 0.3384, 0.3609, 0.3619, 0.3667, 0.3737, 0.3747, 0.3838, 0.3921, 0.396, 0.3984,
                                        0.3993, 0.4075, 0.4091, 0.4101, 0.42, 0.423, 0.4247, 0.4274, 0.4293, 0.4328, 0.4382, 0.4385, 0.442, 0.4473, 0.4477, 0.4503,
@@ -55,9 +54,17 @@ static char brightness_to_ascii(float f)
     {
         return CHAR_PIXEL_TABLE[0];
     }
-    const float *it = std::upper_bound(CHAR_BRIGHTNESS_TABLE, CHAR_BRIGHTNESS_TABLE + sizeof(CHAR_BRIGHTNESS_TABLE) / sizeof(float) - 1, f);
-    size_t i = it - CHAR_BRIGHTNESS_TABLE;
-    return CHAR_PIXEL_TABLE[i];
+    
+    size_t lb, ub;
+    for(lb = 0, ub = sizeof(CHAR_BRIGHTNESS_TABLE) / sizeof(CHAR_BRIGHTNESS_TABLE[0]); lb < ub - 1;) {
+        size_t mid = (lb + ub) / 2;
+        if(CHAR_BRIGHTNESS_TABLE[mid] <= f) {
+            lb = mid;
+        } else {
+            ub = mid;
+        }
+    }
+    return CHAR_PIXEL_TABLE[lb];
 }
 
 static float brightness_by_distance(float dist)
@@ -199,7 +206,7 @@ void texture_set(texture_t *tex, uvec2_t index, float brightness)
 
 void texture_clear(texture_t *tex)
 {
-    std::memset(tex->_buffer, 0, tex->_dims.first * tex->_dims.second * sizeof(float));
+    memset(tex->_buffer, 0, tex->_dims.first * tex->_dims.second * sizeof(float));
 }
 
 static const float REAL_COLUMN_HEIGHT = 1.0f;
@@ -210,8 +217,8 @@ void camera_from_fovy(camera_t *camera, uvec2_t dims, float fovy)
     double y = dims.second;
     // cos(y/2 * d) = fovy / 2
     // cos(x/2 * d) = fovx / 2
-    float d = 2 * std::acos(fovy * 0.5) / y;
-    float fovx = 2 * std::cos(x * 0.5 * d);
+    float d = 2 * acosf(fovy * 0.5) / y;
+    float fovx = 2 * cosf(x * 0.5 * d);
     camera->_fovx = fovx;
     camera->_fovy = fovy;
 }
@@ -226,7 +233,7 @@ void camera_from_fovx(camera_t *camera, uvec2_t dims, float fovx)
 
 float column_height(camera_t *camera, float dist)
 {
-    float view_height = std::atan(camera->_fovy * 0.5f) * dist * 2.0f;
+    float view_height = atanf(camera->_fovy * 0.5f) * dist * 2.0f;
     return REAL_COLUMN_HEIGHT / view_height;
 }
 
@@ -260,10 +267,10 @@ void renderer_draw_from(renderer_t *renderer, vec2_t pos, vec2_t look_dir)
 
         size_t screen_height = renderer->_fb._dims.second;
         size_t wall_height = screen_height * height_ratio;
-        size_t column_height = std::min(screen_height, wall_height);
+        size_t column_height = MIN(screen_height, wall_height);
 
         float v_step = 1.0 / (wall_height - 1);
-        ssize_t starting_row = std::max(static_cast<ssize_t>(0), compute_starting_row(screen_height, column_height));
+        ssize_t starting_row = MAX(static_cast<ssize_t>(0), compute_starting_row(screen_height, column_height));
         ssize_t unlimited_starting_row = compute_starting_row(screen_height, wall_height);
         vec2_t uv = {hit.u, v_step * (starting_row - unlimited_starting_row)};
 
@@ -274,7 +281,6 @@ void renderer_draw_from(renderer_t *renderer, vec2_t pos, vec2_t look_dir)
         }
         angle += dangle;
     }
-    std::cout << std::endl;
     renderer_show_fb(renderer);
 }
 
@@ -334,20 +340,7 @@ void renderer_show_fb(const renderer_t *renderer)
     size_t ascii_width = fb_size.first, ascii_height = fb_size.second / 2;
     size_t ascii_size = (ascii_width + 1) * ascii_height;
 
-    std::unique_ptr<char[]> ascii_image = std::make_unique<char[]>(ascii_size);
-#if 0
-    float char_ratio = 0.5f; // width/height
-    const auto &fb_size = _fb.size();
-    if(char_ratio < 1.0f) {
-        const auto &fb_size = _fb.size();
-        ascii_width = fb_size.first;
-        ascii_height = std::ceil(fb_size.second / char_ratio);
-    } else {
-        const auto &fb_size = _fb.size();
-        ascii_width = std::ceil(fb_size.first * char_ratio);
-        ascii_height = fb_size.second;
-    }
-#endif
+    char *ascii_image = (char *)malloc(ascii_size * sizeof(char));
 
     for (size_t ascii_y = 0; ascii_y < ascii_height; ascii_y++)
     {
@@ -362,8 +355,9 @@ void renderer_show_fb(const renderer_t *renderer)
         ascii_image[ascii_y * (ascii_width + 1) + ascii_width] = '\n';
     }
 
-    std::cout << "\e[H\e[?25l\e[?1049h";
-    std::cout << std::string_view(ascii_image.get(), ascii_size);
+    puts("\e[H\e[?25l\e[?1049h");
+    printf("%.*s", (int)ascii_size, ascii_image);
+    free(ascii_image);
 }
 
 void map_create(map_t *map, uvec2_t dims)
@@ -536,12 +530,20 @@ inputs_t handle_input()
     return inputs;
 }
 
+unsigned long millisecond_diff(struct timespec *start, struct timespec *end) {
+    unsigned long milliseconds = (end->tv_sec - start->tv_sec) * 1000UL;
+    milliseconds += start->tv_nsec / 1000000;
+    milliseconds -= end->tv_nsec / 1000000;
+    return milliseconds;
+}
+
 int main()
 {
-    std::ofstream logfile("labyrinth.log");
+    LOGFILE = open("labyrinth.log", O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP);
     if (!isatty(STDOUT_FILENO))
     {
-        logfile << "STDOUT not a tty!\n";
+        char errormsg[] = "STDOUT not a tty!\n";
+        write(LOGFILE, errormsg, sizeof(errormsg));
         exit(1);
     }
     struct winsize tty_size;
@@ -558,30 +560,30 @@ int main()
     map_from_string(&map, map_example);
     renderer_t r;
     renderer_create(&r, &map, uvec2_t {(unsigned)ascii_width, (unsigned)ascii_height * 2});
-    auto target_frame_duration = std::chrono::milliseconds(1000) / 30;
+    long unsigned target_frame_duration_ms = 1000 / 30;
 
     vec2_t player_pos = {1.5, 1.5};
     vec2_t player_dir = {0.0, 1.0};
     float movement_speed = 5.0f;
-    float movement_factor = target_frame_duration.count() * movement_speed / 1000.0f;
+    float movement_factor = target_frame_duration_ms * movement_speed / 1000.0f;
     float rotation_speed = M_PI_2f32;
-    float rotation_factor = target_frame_duration.count() * rotation_speed / 1000.0f;
+    float rotation_factor = target_frame_duration_ms * rotation_speed / 1000.0f;
 
     while (true)
     {
-        auto frame_start = std::chrono::high_resolution_clock::now();
+        struct timespec frame_start;
+        clock_gettime(CLOCK_MONOTONIC, &frame_start);
         renderer_draw_from(&r, player_pos, player_dir);
-        auto frame_end = std::chrono::high_resolution_clock::now();
-        auto real_frame_duration = (frame_end - frame_start);
-        if (target_frame_duration > real_frame_duration)
+        struct timespec frame_end;
+        clock_gettime(CLOCK_MONOTONIC, &frame_end);
+        unsigned long real_frame_duration = millisecond_diff(&frame_start, &frame_end);
+        if (target_frame_duration_ms > real_frame_duration)
         {
-            std::this_thread::sleep_for(target_frame_duration - real_frame_duration);
+            usleep((target_frame_duration_ms - real_frame_duration) * 1000);
         }
         else
         {
-            logfile << "Too slow! Target duration: " << target_frame_duration.count()
-                    << " Real duration: " << std::chrono::duration_cast<std::chrono::milliseconds>(real_frame_duration).count()
-                    << "\n";
+            dprintf(LOGFILE, "Too slow! Target duration: %lu Real duration: %lu\n", target_frame_duration_ms, real_frame_duration);
         }
         inputs_t inputs = handle_input();
         vec2_t old_pos = player_pos;
